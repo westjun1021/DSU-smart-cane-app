@@ -10,10 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-
-  # ▼▼▼ [추가!] 네이버 지도 패키지 ▼▼▼
   flutter_naver_map: ^1.4.1+1
-  # ▲▲▲ [추가!] ▲▲▲
+  location: ^5.0.3
+  dio: ^5.4.3+1
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +21,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/
