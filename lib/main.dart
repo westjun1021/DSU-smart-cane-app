@@ -1,9 +1,11 @@
+// lib/main.dart (오류 2개 모두 수정 완료)
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:location/location.dart';
 import 'package:dio/dio.dart';
-import 'api_keys.dart';
+import 'api_keys.dart'; // [중요!] api_keys.dart 파일을 import 합니다.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,10 +51,11 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     // [키 2: API Gateway 인증]
-    // API 서비스 클래스를 초기화합니다.
+    // ▼▼▼ [수정 1] NaverMapApiService 생성자에 tmapAppKey 전달 ▼▼▼
     _apiService = NaverMapApiService(
       clientId: apiGwClientId,
       clientSecret: apiGwClientSecret,
+      tmapAppKey: tmapAppKey, // api_keys.dart에 추가한 Tmap 키
     );
   }
 
@@ -65,7 +68,7 @@ class _MapPageState extends State<MapPage> {
 
   // 사용자에게 피드백을 주기 위한 SnackBar 함수
   void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
+    if (!mounted) return; // context가 유효한지 확인
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -127,7 +130,7 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  //검색함수 (API 서비스 사용)
+  // '검색' 함수 (API 서비스 사용)
   Future<void> _searchDestination() async {
     final String query = _searchController.text;
     if (query.isEmpty) {
@@ -177,7 +180,8 @@ class _MapPageState extends State<MapPage> {
     }
 
     try {
-      final pathPoints = await _apiService.findDrivingRoute(
+      // ▼▼▼ [수정 2] 함수 이름을 findWalkingRoute로 변경 ▼▼▼
+      final pathPoints = await _apiService.findWalkingRoute(
         _currentLocation!,
         _destinationLocation!,
       );
@@ -192,20 +196,19 @@ class _MapPageState extends State<MapPage> {
         width: 5,
       );
       _mapController?.addOverlay(polyline);
-
-      // 경로가 잘 보이도록 카메라 범위를 조절
+      // 경로가 잘 보이도록 카메라 범위를 조절합니다.
       _mapController?.updateCamera(
           NCameraUpdate.fitBounds(NLatLngBounds.from(pathPoints)));
 
-      print("경로 탐색 성공!");
-      _showSnackBar("경로 탐색에 성공했습니다.");
+      print("보행자 경로 탐색 성공!");
+      _showSnackBar("보행자 경로 탐색에 성공했습니다.");
     } catch (e) {
       print("API 호출 오류: $e");
       _showSnackBar("경로 탐색 실패: $e", isError: true);
     }
   }
 
-  //경로 취소
+  // '경로 취소' 함수
   Future<void> _cancelPath() async {
     _mapController?.clearOverlays(); // 모든 오버레이 (마커, 경로) 삭제
     _destinationLocation = null;
@@ -214,7 +217,7 @@ class _MapPageState extends State<MapPage> {
     print("경로 및 마커가 삭제되었습니다.");
     _showSnackBar("경로가 취소되었습니다.");
 
-    //카메라를 현재 위치로 이동
+    // (선택) 카메라를 현재 위치로 이동
     if (_currentLocation != null) {
       _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(target: _currentLocation!, zoom: 15));
@@ -234,7 +237,7 @@ class _MapPageState extends State<MapPage> {
             border: InputBorder.none,
           ),
           style: const TextStyle(color: Colors.black),
-          onSubmitted: (value) => _searchDestination(),
+          onSubmitted: (value) => _searchDestination(), // 엔터키로 검색
         ),
         backgroundColor: Colors.green,
         actions: [
@@ -248,17 +251,17 @@ class _MapPageState extends State<MapPage> {
           ),
           IconButton(
             icon: const Icon(Icons.cancel), // 취소 아이콘
-            onPressed: _cancelPath,
+            onPressed: _cancelPath, // _cancelPath 함수 호출
           ),
         ],
       ),
       body: NaverMap(
         options: const NaverMapViewOptions(
           initialCameraPosition: NCameraPosition(
-            target: NLatLng(35.1661, 129.0725), //초기 위치
+            target: NLatLng(35.1661, 129.0725), // 부산 어딘가 (초기 위치)
             zoom: 15,
           ),
-          locationButtonEnable: true, //현위치 버튼 표시
+          locationButtonEnable: true, // 현위치 버튼 표시
         ),
         onMapReady: _onMapReady, // 맵 준비 완료 시 콜백 지정
       ),
@@ -267,24 +270,30 @@ class _MapPageState extends State<MapPage> {
 }
 
 // ------------------------------------------------------------------
-// API 통신을 전담하는 서비스 클래스 분리
+// [수정] 네이버 지오코딩 + Tmap 보행자 경로 API 서비스
 // ------------------------------------------------------------------
 class NaverMapApiService {
   final Dio _dio;
-  final String _clientId;
-  final String _clientSecret;
+  final String _clientId; // Naver Geocoding용
+  final String _clientSecret; // Naver Geocoding용
+
+  // ▼▼▼ [수정 3] 이 줄을 빠뜨리신 것 같습니다. ▼▼▼
+  final String _tmapAppKey; // Tmap 보행자 경로용
 
   // API 엔드포인트 URL
   static const String _geocodeUrl =
       'https://maps.apigw.ntruss.com/map-geocode/v2/geocode';
-  static const String _directionsUrl =
-      'https://maps.apigw.ntruss.com/map-direction-15/v1/driving';
+  static const String _tmapWalkingUrl =
+      'https://apis.openapi.sk.com/tmap/routes/pedestrian';
 
   NaverMapApiService({
     required String clientId,
     required String clientSecret,
+    // ▼▼▼ [수정 4] Tmap 키를 받도록 수정 ▼▼▼
+    required String tmapAppKey, // this.tmapAppKey 대신 String tmapAppKey
   })  : _clientId = clientId,
         _clientSecret = clientSecret,
+        _tmapAppKey = tmapAppKey, // 여기서 _tmapAppKey에 할당
         _dio = Dio(BaseOptions(
           headers: {
             'X-NCP-APIGW-API-KEY-ID': clientId,
@@ -293,12 +302,13 @@ class NaverMapApiService {
           },
         ));
 
-  /// [Geocoding] 주소 검색
+  /// [Geocoding] 주소 검색 (Naver API)
   Future<(NLatLng, String)> searchGeocode(String query) async {
     try {
       final response = await _dio.get(
         _geocodeUrl,
         queryParameters: {'query': query},
+        // Naver API 호출 시에는 기본 헤더(Naver 키)가 사용됩니다.
       );
 
       if (response.statusCode == 200 &&
@@ -320,34 +330,66 @@ class NaverMapApiService {
     }
   }
 
-  /// [Directions] 경로 탐색
-  Future<List<NLatLng>> findDrivingRoute(NLatLng start, NLatLng goal) async {
+  /// [Directions] (Tmap 보행자) 경로 탐색
+  Future<List<NLatLng>> findWalkingRoute(NLatLng start, NLatLng goal) async {
     try {
       final response = await _dio.get(
-        _directionsUrl,
+        _tmapWalkingUrl,
         queryParameters: {
-          'start': '${start.longitude},${start.latitude}',
-          'goal': '${goal.longitude},${goal.latitude}',
-          'option': 'traavoidcaronly', // 자동차 회피 경로 (보행자 옵션이 없어 최선)
+          'version': '1',
+          'startX': start.longitude,
+          'startY': start.latitude,
+          'endX': goal.longitude,
+          'endY': goal.latitude,
+          'startName': '출발지',
+          'endName': '도착지',
+          'resCoordType': 'WGS84GEO',
+          'format': 'json',
         },
+        // ▼▼▼ [중요] Tmap API 호출 시에는 Tmap appKey 헤더 사용 ▼▼▼
+        options: Options(
+          headers: {
+            'appKey': _tmapAppKey, // Tmap 앱 키
+            'Accept': 'application/json',
+            // Naver 키 헤더는 자동으로 포함되지 않습니다.
+          },
+        ),
       );
 
-      if (response.statusCode == 200 &&
-          response.data['route'] != null &&
-          response.data['route']['traavoidcaronly'] != null) {
-        final List<dynamic> path =
-            response.data['route']['traavoidcaronly'][0]['path'];
-        final List<NLatLng> points =
-            path.map((point) => NLatLng(point[1], point[0])).toList();
+      if (response.statusCode == 200 && response.data['features'] != null) {
+        final List<NLatLng> points = [];
+        final features = response.data['features'] as List;
 
-        return points;
-      } else {
-        throw Exception(
-            "경로 탐색에 실패했습니다: ${response.data['message'] ?? '알 수 없는 오류'}");
+        for (var feature in features) {
+          final geometry = feature['geometry'];
+          final coords = geometry['coordinates'] as List;
+
+          if (geometry['type'] == 'LineString') {
+            for (var point in coords) {
+              if (point is List && point.length >= 2) {
+                points.add(NLatLng(point[1], point[0])); // Tmap (lng, lat)
+              }
+            }
+          } else if (geometry['type'] == 'Point') {
+            if (coords.length >= 2) {
+              points.add(NLatLng(coords[1], coords[0])); // Tmap (lng, lat)
+            }
+          }
+        }
+
+        if (points.isEmpty) {
+          throw Exception("경로를 찾았으나 유효한 좌표가 없습니다.");
+        }
+        return points; // Tmap 좌표로 만든 Naver 경로 리스트 반환
       }
+
+      throw Exception(
+          "경로 탐색에 실패했습니다: ${response.data['error']?['message'] ?? '경로를 찾을 수 없습니다.'}");
     } on DioException catch (e) {
       throw Exception(
-          "API 호출 오류: ${e.response?.data?['message'] ?? e.message}");
+          "Tmap API 호출 오류: ${e.response?.data?['error']?['message'] ?? e.message}");
+    } catch (e) {
+      throw Exception("Tmap 데이터 파싱 오류: ${e.toString()}");
     }
   }
 }
