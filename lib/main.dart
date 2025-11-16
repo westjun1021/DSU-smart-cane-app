@@ -1,11 +1,11 @@
-// lib/main.dart (오류 2개 모두 수정 완료)
+// lib/main.dart (Tmap 키워드 검색 기능으로 교체 완료)
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:location/location.dart';
 import 'package:dio/dio.dart';
-import 'api_keys.dart'; // [중요!] api_keys.dart 파일을 import 합니다.
+import 'api_keys.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,7 +51,7 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     // [키 2: API Gateway 인증]
-    // ▼▼▼ [수정 1] NaverMapApiService 생성자에 tmapAppKey 전달 ▼▼▼
+    // NaverMapApiService 생성자에 tmapAppKey 전달
     _apiService = NaverMapApiService(
       clientId: apiGwClientId,
       clientSecret: apiGwClientSecret,
@@ -130,7 +130,7 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  // '검색' 함수 (API 서비스 사용)
+  // 검색함수 (API 서비스 사용)
   Future<void> _searchDestination() async {
     final String query = _searchController.text;
     if (query.isEmpty) {
@@ -142,11 +142,12 @@ class _MapPageState extends State<MapPage> {
     FocusScope.of(context).unfocus();
 
     try {
-      final (destination, address) = await _apiService.searchGeocode(query);
+      // ▼▼▼ Tmap POI API가 (좌표, 장소명)을 반환합니다 ▼▼▼
+      final (destination, placeName) = await _apiService.searchGeocode(query);
 
       _destinationLocation = destination;
-      print("목적지 검색 성공: $address ($destination)");
-      _showSnackBar("목적지 검색 성공: $address");
+      print("목적지 검색 성공: $placeName ($destination)");
+      _showSnackBar("목적지 검색 성공: $placeName"); // 도로명 대신 장소명 표시
 
       _mapController?.clearOverlays(); // 기존 오버레이(경로, 마커) 삭제
       final marker = NMarker(
@@ -160,14 +161,14 @@ class _MapPageState extends State<MapPage> {
         zoom: 15,
       ));
     } catch (e) {
-      print("지오코딩 API 호출 오류: $e");
+      print("Tmap POI API 호출 오류: $e");
       _showSnackBar("검색 실패: $e", isError: true);
     }
   }
 
-  // '길찾기' 함수 (API 서비스 사용)
+  // 길찾기함수 (API 서비스 사용)
   Future<void> _findPath() async {
-    // 길찾기 전 항상 현재 위치를 최신화합니다.
+    // 길찾기 전 항상 현재 위치를 최신화
     await _updateCurrentLocation();
 
     if (_currentLocation == null) {
@@ -180,7 +181,6 @@ class _MapPageState extends State<MapPage> {
     }
 
     try {
-      // ▼▼▼ [수정 2] 함수 이름을 findWalkingRoute로 변경 ▼▼▼
       final pathPoints = await _apiService.findWalkingRoute(
         _currentLocation!,
         _destinationLocation!,
@@ -196,7 +196,7 @@ class _MapPageState extends State<MapPage> {
         width: 5,
       );
       _mapController?.addOverlay(polyline);
-      // 경로가 잘 보이도록 카메라 범위를 조절합니다.
+      // 경로가 잘 보이도록 카메라 범위를 조절
       _mapController?.updateCamera(
           NCameraUpdate.fitBounds(NLatLngBounds.from(pathPoints)));
 
@@ -217,7 +217,7 @@ class _MapPageState extends State<MapPage> {
     print("경로 및 마커가 삭제되었습니다.");
     _showSnackBar("경로가 취소되었습니다.");
 
-    // (선택) 카메라를 현재 위치로 이동
+    // 카메라를 현재 위치로 이동
     if (_currentLocation != null) {
       _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(target: _currentLocation!, zoom: 15));
@@ -270,63 +270,80 @@ class _MapPageState extends State<MapPage> {
 }
 
 // ------------------------------------------------------------------
-// [수정] 네이버 지오코딩 + Tmap 보행자 경로 API 서비스
+// [수정] Tmap POI(키워드 검색) + Tmap 보행자 경로 API 서비스
 // ------------------------------------------------------------------
 class NaverMapApiService {
   final Dio _dio;
-  final String _clientId; // Naver Geocoding용
-  final String _clientSecret; // Naver Geocoding용
+  final String _clientId; // Naver (현재 미사용)
+  final String _clientSecret; // Naver (현재 미사용)
+  final String _tmapAppKey; // Tmap (검색, 경로 둘 다 사용)
 
-  // ▼▼▼ [수정 3] 이 줄을 빠뜨리신 것 같습니다. ▼▼▼
-  final String _tmapAppKey; // Tmap 보행자 경로용
+  // ▼▼▼ [변경] Tmap POI 검색 API 주소 ▼▼▼
+  static const String _tmapPoiSearchUrl =
+      'https://apis.openapi.sk.com/tmap/pois';
 
-  // API 엔드포인트 URL
-  static const String _geocodeUrl =
-      'https://maps.apigw.ntruss.com/map-geocode/v2/geocode';
   static const String _tmapWalkingUrl =
       'https://apis.openapi.sk.com/tmap/routes/pedestrian';
 
   NaverMapApiService({
     required String clientId,
     required String clientSecret,
-    // ▼▼▼ [수정 4] Tmap 키를 받도록 수정 ▼▼▼
-    required String tmapAppKey, // this.tmapAppKey 대신 String tmapAppKey
+    required String tmapAppKey,
   })  : _clientId = clientId,
         _clientSecret = clientSecret,
-        _tmapAppKey = tmapAppKey, // 여기서 _tmapAppKey에 할당
+        _tmapAppKey = tmapAppKey,
         _dio = Dio(BaseOptions(
-          headers: {
-            'X-NCP-APIGW-API-KEY-ID': clientId,
-            'X-NCP-APIGW-API-KEY': clientSecret,
-            'Accept': 'application/json',
-          },
-        ));
+            // 기본 헤더가 더 이상 필요 없으므로 제거 (각 API 호출 시 개별 설정)
+            ));
 
-  /// [Geocoding] 주소 검색 (Naver API)
+  // ▼▼▼ [대규모 수정] Naver Geocoding -> Tmap POI 키워드 검색으로 교체 ▼▼▼
+  /// [Search] (Tmap POI) 키워드로 장소 검색
   Future<(NLatLng, String)> searchGeocode(String query) async {
     try {
       final response = await _dio.get(
-        _geocodeUrl,
-        queryParameters: {'query': query},
-        // Naver API 호출 시에는 기본 헤더(Naver 키)가 사용됩니다.
+        _tmapPoiSearchUrl,
+        queryParameters: {
+          'version': '1',
+          'searchKeyword': query, // 검색할 키워드
+          'count': '1', // 가장 정확한 1개의 결과만 받기
+          'resCoordType': 'WGS84GEO', // NLatLng과 호환되는 좌표계
+          'format': 'json',
+        },
+        options: Options(
+          headers: {
+            'appKey': _tmapAppKey, // Tmap 앱 키
+            'Accept': 'application/json',
+          },
+        ),
       );
 
       if (response.statusCode == 200 &&
-          response.data['addresses'] != null &&
-          (response.data['addresses'] as List).isNotEmpty) {
-        final address = response.data['addresses'][0];
-        final double lon = double.parse(address['x']);
-        final double lat = double.parse(address['y']);
-        final String roadAddress = address['roadAddress'] ?? '주소 정보 없음';
+          response.data['searchPoiInfo'] != null) {
+        final poiInfo = response.data['searchPoiInfo'];
 
-        return (NLatLng(lat, lon), roadAddress);
+        // ▼▼▼ [수정] totalCount는 String일 수 있으므로 비교 수정 ▼▼▼
+        if (poiInfo['totalCount'] == "0") {
+          throw Exception("검색 결과가 없습니다.");
+        }
+
+        final poi = poiInfo['pois']['poi'][0];
+
+        // Tmap API는 좌표를 String으로 줍니다.
+        final double lon = double.parse(poi['noorLon']);
+        final double lat = double.parse(poi['noorLat']);
+
+        // Tmap은 'name'(장소명)을 반환합니다. 주소보다 이게 더 직관적입니다.
+        final String name = poi['name'] ?? '이름 없는 장소';
+
+        return (NLatLng(lat, lon), name); // (좌표, 장소명) 반환
       } else {
-        throw Exception(
-            "검색 결과가 없습니다: ${response.data['errorMessage'] ?? '알 수 없는 오류'}");
+        throw Exception("검색 결과가 없습니다.");
       }
     } on DioException catch (e) {
       throw Exception(
-          "API 호출 오류: ${e.response?.data?['errorMessage'] ?? e.message}");
+          "Tmap POI API 호출 오류: ${e.response?.data?['error']?['message'] ?? e.message}");
+    } catch (e) {
+      throw Exception("Tmap POI 파싱 오류: ${e.toString()}");
     }
   }
 
@@ -346,12 +363,10 @@ class NaverMapApiService {
           'resCoordType': 'WGS84GEO',
           'format': 'json',
         },
-        // ▼▼▼ [중요] Tmap API 호출 시에는 Tmap appKey 헤더 사용 ▼▼▼
         options: Options(
           headers: {
             'appKey': _tmapAppKey, // Tmap 앱 키
             'Accept': 'application/json',
-            // Naver 키 헤더는 자동으로 포함되지 않습니다.
           },
         ),
       );
@@ -380,7 +395,7 @@ class NaverMapApiService {
         if (points.isEmpty) {
           throw Exception("경로를 찾았으나 유효한 좌표가 없습니다.");
         }
-        return points; // Tmap 좌표로 만든 Naver 경로 리스트 반환
+        return points;
       }
 
       throw Exception(
