@@ -13,6 +13,7 @@ dependencies:
   flutter_naver_map: ^1.4.1+1
   location: ^5.0.3
   dio: ^5.4.3+1
+  flutter_tts: ^3.8.3
 
 dev_dependencies:
   flutter_test:
